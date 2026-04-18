@@ -9,6 +9,7 @@ DSAI_project/
 |-- combined_hate_speech_dataset.csv  # Full Hinglish dataset, used by default
 |-- config.py                         # Hyperparameters and paths
 |-- main.py                           # Full BERT pipeline entry point
+|-- analysis.py                       # Post-training metrics and visualization runner
 |-- dataset.py                        # CSV loading, preprocessing, tokenization
 |-- classifier.py                     # BERT classifier
 |-- robust_losses.py                  # CE, SCE, GCE, MAE, bootstrapping
@@ -46,6 +47,40 @@ python main.py --device cpu
 python main.py --no_noise
 python main.py --noise_rate 0.4 --noise_type symmetric
 python main.py --dataset_path combined_hate_speech_dataset.csv --text_column text --label_column hate_label
+```
+
+The default training length is now `10` epochs. You can still override it from the command line with `--epochs`.
+
+## Generate Metrics And Visualizations
+
+After training creates `checkpoints/best_model.pt`, run:
+
+```bash
+python analysis.py
+```
+
+This evaluates the saved model and writes analysis artifacts to `./analysis_outputs/`:
+
+- `metrics_all_splits.json`
+- `metrics_summary.csv`
+- `per_class_metrics.csv`
+- `classification_reports.txt`
+- `train_predictions.csv`, `val_predictions.csv`, `test_predictions.csv`
+- `train_loss_diagnostics.csv`
+- confusion matrix
+- per-class performance chart
+- training curves
+- loss distribution with GMM diagnostics
+- noise-rate history
+- PCA/UMAP embedding visualization
+
+Useful variants:
+
+```bash
+python analysis.py --output_dir ./visualizations
+python analysis.py --skip_embeddings
+python analysis.py --splits val test
+python analysis.py --checkpoint ./checkpoints/best_model.pt --device cpu
 ```
 
 ## Current Dataset Defaults

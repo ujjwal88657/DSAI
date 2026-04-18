@@ -57,7 +57,7 @@ class ModelConfig:
 @dataclass
 class TrainingConfig:
     # Core training
-    num_epochs: int = 20
+    num_epochs: int = 10
     batch_size: int = 32
     learning_rate: float = 2e-5
     weight_decay: float = 1e-4

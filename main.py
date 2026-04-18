@@ -125,7 +125,6 @@ def main():
     if args.fast:
         cfg.training.num_epochs = 3
         cfg.training.batch_size = 16
-        cfg.data.num_classes = 3
         cfg.training.log_every_n_steps = 5
         print("[Fast Mode] Reduced epochs and batch size for testing.")
 
