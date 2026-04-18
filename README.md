@@ -41,6 +41,8 @@ Useful variants:
 ```bash
 python main.py --fast
 python main.py --epochs 10 --batch_size 16
+python main.py --device auto
+python main.py --device cpu
 python main.py --no_noise
 python main.py --noise_rate 0.4 --noise_type symmetric
 python main.py --dataset_path combined_hate_speech_dataset.csv --text_column text --label_column hate_label
@@ -84,3 +86,27 @@ Training artifacts are written to:
 ## Notes
 
 `bert-base-multilingual-cased` is the default model and will be downloaded by HuggingFace Transformers on the first run. Full Co-Teaching uses two BERT models, so GPU training is strongly recommended.
+
+### Kaggle P100 CUDA Error
+
+If Kaggle reports a Tesla P100 and then fails with:
+
+```text
+CUDA error: no kernel image is available for execution on the device
+```
+
+the installed PyTorch wheel does not include kernels for the P100 compute capability (`sm_60`). This is an environment mismatch, not a model/trainer bug. The training script now checks this before model training starts and prints the GPU architecture and PyTorch CUDA architecture list.
+
+Best fixes:
+
+```bash
+# Easiest on Kaggle: switch the accelerator from P100 to T4/V100/A100.
+
+# Or run without CUDA, which is much slower for full BERT:
+python main.py --device cpu
+
+# Or let the script choose CPU/MPS if CUDA is unusable:
+python main.py --device auto
+```
+
+If you must use P100, install a PyTorch build that includes `sm_60`, then restart the notebook/kernel before running training again.

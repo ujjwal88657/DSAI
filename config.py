@@ -63,7 +63,7 @@ class TrainingConfig:
     weight_decay: float = 1e-4
     warmup_ratio: float = 0.1
     gradient_clip: float = 1.0
-    device: str = "cuda"                         # auto-detected in main
+    device: str = "cuda"                         # cuda | cpu | mps | auto
 
     # Dual model (Co-Teaching)
     use_co_teaching: bool = True

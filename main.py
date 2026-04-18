@@ -23,6 +23,7 @@ from trainer import Trainer
 from metrics import predict
 from plots import run_all_visualizations
 from noise_strategies import GaussianMixtureNoiseSeparator
+from helpers import get_device as select_device, device_info
 
 
 # ============================================================
@@ -33,7 +34,8 @@ def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
@@ -43,16 +45,15 @@ def set_seed(seed: int):
 # ============================================================
 
 def get_device(cfg) -> torch.device:
-    if cfg.training.device == "cuda" and torch.cuda.is_available():
-        device = torch.device("cuda")
-    elif cfg.training.device == "mps" and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        device = torch.device("mps")
-    else:
-        device = torch.device("cpu")
+    device = select_device(cfg.training.device, strict=True)
     print(f"[Device] Using: {device}")
     if device.type == "cuda":
-        print(f"  GPU: {torch.cuda.get_device_name(0)}")
-        print(f"  VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+        info = device_info(device)
+        print(f"  GPU: {info['gpu_name']}")
+        print(f"  VRAM: {info['vram_gb']:.1f} GB")
+        print(f"  Compute capability: {info['compute_capability']}")
+        print(f"  PyTorch CUDA: {info['cuda_version']}")
+        print(f"  PyTorch CUDA arches: {', '.join(info['torch_cuda_arches'])}")
     return device
 
 
@@ -75,6 +76,8 @@ def parse_args():
     p.add_argument("--lr", type=float, default=None, help="Learning rate")
     p.add_argument("--model_name", type=str, default=None, help="HuggingFace model name/path")
     p.add_argument("--max_seq_len", type=int, default=None, help="Maximum tokenizer sequence length")
+    p.add_argument("--device", type=str, default=None, choices=["auto", "cuda", "cpu", "mps"],
+                   help="Override training device. Use auto to fall back when CUDA is unavailable.")
     p.add_argument("--no_noise", action="store_true", help="Disable synthetic noise injection")
     p.add_argument("--no_co_teach", action="store_true", help="Disable Co-Teaching")
     p.add_argument("--no_divide_mix", action="store_true", help="Disable DivideMix GMM")
@@ -109,6 +112,7 @@ def main():
         cfg.model.model_name = args.model_name
         cfg.data.tokenizer_name = args.model_name
     if args.max_seq_len: cfg.data.max_seq_len = args.max_seq_len
+    if args.device: cfg.training.device = args.device
     if args.no_noise:
         cfg.data.simulate_noise = False
         cfg.data.noise_rate = 0.0

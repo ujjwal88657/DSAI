@@ -23,8 +23,9 @@ def set_seed(seed: int = 42):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
@@ -34,12 +35,71 @@ def set_seed(seed: int = 42):
 # Device management
 # -----------------------------------------------------------------------
 
-def get_device(prefer: str = "cuda") -> torch.device:
-    """Auto-select best available device."""
-    if prefer == "cuda" and torch.cuda.is_available():
-        return torch.device("cuda")
-    if prefer == "mps" and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+def _format_arch_list(arches: List[str]) -> str:
+    return ", ".join(arches) if arches else "unknown"
+
+
+def cuda_compatibility_problem(device_index: int = 0) -> Optional[str]:
+    """Return a human-readable CUDA compatibility problem, or None if OK."""
+    if not torch.cuda.is_available():
+        return "CUDA was requested, but torch.cuda.is_available() is False."
+
+    props = torch.cuda.get_device_properties(device_index)
+    major, minor = torch.cuda.get_device_capability(device_index)
+    required_arch = f"sm_{major}{minor}"
+    compatible_arches = {required_arch, f"compute_{major}{minor}"}
+
+    try:
+        compiled_arches = list(torch.cuda.get_arch_list())
+    except Exception:
+        compiled_arches = []
+
+    if compiled_arches and compatible_arches.isdisjoint(compiled_arches):
+        return (
+            f"{props.name} has CUDA compute capability {major}.{minor} "
+            f"({required_arch}), but this PyTorch build was compiled for: "
+            f"{_format_arch_list(compiled_arches)}."
+        )
+
+    return None
+
+
+def cuda_setup_hint(problem: str) -> str:
+    return (
+        f"{problem}\n\n"
+        "This is an environment issue, not a model code issue. Install a PyTorch "
+        "build that includes your GPU architecture, choose a newer GPU, or run "
+        "with --device cpu."
+    )
+
+
+def get_device(prefer: str = "cuda", strict: bool = False) -> torch.device:
+    """Select the best available device and reject incompatible CUDA builds."""
+    prefer = (prefer or "auto").lower()
+    valid = {"auto", "cuda", "mps", "cpu"}
+    if prefer not in valid:
+        raise ValueError(f"Unknown device preference '{prefer}'. Expected one of {sorted(valid)}.")
+
+    if prefer == "cpu":
+        return torch.device("cpu")
+
+    if prefer in {"cuda", "auto"}:
+        if torch.cuda.is_available():
+            problem = cuda_compatibility_problem()
+            if problem is None:
+                return torch.device("cuda")
+            if strict or prefer == "cuda":
+                raise RuntimeError(cuda_setup_hint(problem))
+            print(f"[Device] Skipping CUDA: {problem}")
+        elif strict and prefer == "cuda":
+            raise RuntimeError(cuda_setup_hint("CUDA was requested, but torch.cuda.is_available() is False."))
+
+    if prefer in {"mps", "auto"} and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return torch.device("mps")
+
+    if strict and prefer == "mps":
+        raise RuntimeError("MPS was requested, but torch.backends.mps.is_available() is False.")
+
     return torch.device("cpu")
 
 
@@ -48,10 +108,13 @@ def device_info(device: torch.device) -> Dict:
     info = {"device": str(device)}
     if device.type == "cuda":
         props = torch.cuda.get_device_properties(0)
+        major, minor = torch.cuda.get_device_capability(0)
         info.update({
             "gpu_name": props.name,
             "vram_gb": round(props.total_memory / 1e9, 2),
             "cuda_version": torch.version.cuda,
+            "compute_capability": f"{major}.{minor}",
+            "torch_cuda_arches": torch.cuda.get_arch_list(),
         })
     return info
 

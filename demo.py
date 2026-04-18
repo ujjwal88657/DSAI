@@ -34,6 +34,7 @@ from plots import (
     plot_training_curves, plot_confusion_matrix,
     plot_loss_distribution, plot_per_class_performance
 )
+from helpers import get_device
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -71,7 +72,9 @@ os.makedirs(CFG.log_dir, exist_ok=True)
 # ─────────────────────────────────────────────────────────────────────────────
 def set_seed(seed):
     random.seed(seed); np.random.seed(seed)
-    torch.manual_seed(seed); torch.cuda.manual_seed_all(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 set_seed(CFG.seed)
 
@@ -212,7 +215,7 @@ def get_per_sample_losses(model, loader, device):
 # Full Training Loop
 # ─────────────────────────────────────────────────────────────────────────────
 def train():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = get_device("auto")
     print(f"[Device] {device}")
 
     # ── Data ────────────────────────────────────────────────────────────────

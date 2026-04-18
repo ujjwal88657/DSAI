@@ -323,7 +323,7 @@ class DataModule:
 
     def _load_source_dataframe(self) -> pd.DataFrame:
         """Load the configured CSV. Fall back to synthetic data only if it is absent."""
-        dataset_path = getattr(self.dcfg, "dataset_path", None)
+        dataset_path = getattr(self.dcfg, "combined_hate_speech_dataset.csv", None)
         if dataset_path:
             dataset_path = os.path.abspath(dataset_path)
             if os.path.exists(dataset_path):

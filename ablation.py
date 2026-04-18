@@ -34,7 +34,7 @@ from noise_strategies import (
     SmallLossTrick, LabelRefurbishmentStore,
 )
 from metrics import compute_metrics, compute_loss
-from helpers import set_seed
+from helpers import get_device, set_seed
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -202,7 +202,7 @@ def run_experiment(
 
 def run_ablation(output_dir: str = "./ablation_results"):
     os.makedirs(output_dir, exist_ok=True)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = get_device("auto")
     print(f"\n[Ablation] Device: {device}")
     print("[Ablation] Generating dataset...")
 
