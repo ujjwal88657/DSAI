@@ -21,14 +21,14 @@ from torch.optim.lr_scheduler import OneCycleLR
 from typing import Dict, List, Optional, Tuple
 from tqdm import tqdm
 
-from losses.robust_losses import (
+from robust_losses import (
     build_loss, BootstrappingLoss, compute_per_sample_loss, SymmetricCrossEntropyLoss
 )
-from training.noise_strategies import (
+from noise_strategies import (
     SmallLossTrick, CoTeaching, GaussianMixtureNoiseSeparator,
     LabelRefurbishmentStore, NoiseRateEstimator
 )
-from evaluation.metrics import evaluate_model
+from metrics import evaluate_model
 
 
 class TrainingLogger:

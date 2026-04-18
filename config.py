@@ -11,11 +11,15 @@ from typing import List, Optional
 @dataclass
 class DataConfig:
     # Dataset settings
-    dataset_name: str = "hinglish_hate"          # identifier for the dataset
+    dataset_name: str = "combined_hate_speech"   # identifier for the dataset
+    dataset_path: str = "./combined_hate_speech_dataset.csv"
+    text_column: str = "text"
+    label_column: str = "hate_label"
     data_dir: str = "./data/raw"
     processed_dir: str = "./data/processed"
-    num_classes: int = 3                          # hate, offensive, neutral
-    class_names: List[str] = field(default_factory=lambda: ["hate", "offensive", "neutral"])
+    num_classes: int = 2                          # inferred again after CSV load
+    class_names: List[str] = field(default_factory=lambda: ["non_hate", "hate"])
+    use_cache: bool = False                       # always read the source CSV by default
 
     # Noise simulation
     simulate_noise: bool = True

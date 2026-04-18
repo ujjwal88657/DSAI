@@ -76,22 +76,24 @@ def compute_metrics(
     class_names: Optional[List[str]] = None,
 ) -> Dict:
     """Compute full classification metrics."""
+    label_ids = np.arange(len(class_names)) if class_names else None
     acc = accuracy_score(labels, preds)
 
     # Handle zero_division for imbalanced classes
-    precision_macro = precision_score(labels, preds, average="macro", zero_division=0)
-    recall_macro = recall_score(labels, preds, average="macro", zero_division=0)
-    f1_macro = f1_score(labels, preds, average="macro", zero_division=0)
-    f1_weighted = f1_score(labels, preds, average="weighted", zero_division=0)
+    precision_macro = precision_score(labels, preds, labels=label_ids, average="macro", zero_division=0)
+    recall_macro = recall_score(labels, preds, labels=label_ids, average="macro", zero_division=0)
+    f1_macro = f1_score(labels, preds, labels=label_ids, average="macro", zero_division=0)
+    f1_weighted = f1_score(labels, preds, labels=label_ids, average="weighted", zero_division=0)
 
-    per_class_f1 = f1_score(labels, preds, average=None, zero_division=0)
-    per_class_precision = precision_score(labels, preds, average=None, zero_division=0)
-    per_class_recall = recall_score(labels, preds, average=None, zero_division=0)
+    per_class_f1 = f1_score(labels, preds, labels=label_ids, average=None, zero_division=0)
+    per_class_precision = precision_score(labels, preds, labels=label_ids, average=None, zero_division=0)
+    per_class_recall = recall_score(labels, preds, labels=label_ids, average=None, zero_division=0)
 
-    cm = confusion_matrix(labels, preds)
+    cm = confusion_matrix(labels, preds, labels=label_ids)
 
     report = classification_report(
         labels, preds,
+        labels=label_ids,
         target_names=class_names,
         zero_division=0,
     )

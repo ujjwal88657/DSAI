@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from scipy.stats import norm
 from scipy.optimize import minimize_scalar
 from typing import Dict, List, Optional, Tuple
-from losses.robust_losses import compute_per_sample_loss
+from robust_losses import compute_per_sample_loss
 
 
 # ============================================================

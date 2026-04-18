@@ -21,20 +21,20 @@ from typing import Dict, List, Tuple
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from data.dataset import generate_hinglish_dataset, apply_noise
-from losses.robust_losses import (
+from dataset import generate_hinglish_dataset, apply_noise
+from robust_losses import (
     CrossEntropyLoss, SymmetricCrossEntropyLoss,
     GeneralizedCrossEntropyLoss, MAELoss, BootstrappingLoss,
     compute_per_sample_loss,
 )
-from training.noise_strategies import (
+from noise_strategies import (
     CoTeaching, GaussianMixtureNoiseSeparator,
     SmallLossTrick, LabelRefurbishmentStore,
 )
-from evaluation.metrics import compute_metrics, compute_loss
-from utils.helpers import set_seed
+from metrics import compute_metrics, compute_loss
+from helpers import set_seed
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -20,17 +20,17 @@ from sklearn.model_selection import train_test_split
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # ── Inline imports from project ──────────────────────────────────────────────
-from data.dataset import generate_hinglish_dataset, apply_noise
-from losses.robust_losses import (
+from dataset import generate_hinglish_dataset, apply_noise
+from robust_losses import (
     SymmetricCrossEntropyLoss, CrossEntropyLoss,
     BootstrappingLoss, compute_per_sample_loss
 )
-from training.noise_strategies import (
+from noise_strategies import (
     SmallLossTrick, CoTeaching, GaussianMixtureNoiseSeparator,
     LabelRefurbishmentStore, NoiseRateEstimator
 )
-from evaluation.metrics import compute_metrics, compute_loss
-from visualization.plots import (
+from metrics import compute_metrics, compute_loss
+from plots import (
     plot_training_curves, plot_confusion_matrix,
     plot_loss_distribution, plot_per_class_performance
 )
@@ -391,7 +391,7 @@ def train():
                 embs.append(out["embeddings"].cpu().numpy())
             tl_all.extend(batch["label"].numpy())
     if embs:
-        from visualization.plots import plot_embeddings
+        from plots import plot_embeddings
         emb_arr = np.concatenate(embs)
         plot_embeddings(emb_arr, np.array(tl_all), CFG.class_names,
                         output_dir=CFG.viz_dir, method="both", sample_size=500)

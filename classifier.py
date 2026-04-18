@@ -7,6 +7,7 @@ Supports both single-model and dual-model (Co-Teaching) configurations.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import inspect
 from transformers import AutoModel, AutoConfig
 from typing import Dict, Optional, Tuple
 
@@ -86,16 +87,19 @@ class BERTClassifier(nn.Module):
             output_hidden_states=True,
         )
         self.bert = AutoModel.from_pretrained(mcfg.model_name, config=bert_config)
+        self.hidden_size = getattr(bert_config, "hidden_size", mcfg.hidden_size)
+        self._accepts_token_type_ids = "token_type_ids" in inspect.signature(self.bert.forward).parameters
+        mcfg.hidden_size = self.hidden_size
 
         # Pooling
-        self.pooler = AttentionPooling(mcfg.hidden_size)
+        self.pooler = AttentionPooling(self.hidden_size)
 
         # Dropout before head
         self.dropout = nn.Dropout(mcfg.dropout_rate)
 
         # Classification head
         self.head = ClassificationHead(
-            input_dim=mcfg.hidden_size,
+            input_dim=self.hidden_size,
             hidden_dims=mcfg.classifier_hidden_dims,
             num_classes=mcfg.num_classes,
             dropout_rate=mcfg.dropout_rate,
@@ -144,11 +148,10 @@ class BERTClassifier(nn.Module):
     ) -> torch.Tensor:
         """Return pooled representations (before classification head). Used for visualization."""
         with torch.no_grad():
-            outputs = self.bert(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                token_type_ids=token_type_ids,
-            )
+            bert_kwargs = {"input_ids": input_ids, "attention_mask": attention_mask}
+            if self._accepts_token_type_ids and token_type_ids is not None:
+                bert_kwargs["token_type_ids"] = token_type_ids
+            outputs = self.bert(**bert_kwargs)
             hidden_states = outputs.last_hidden_state
             pooled = self.pooler(hidden_states, attention_mask)
         return pooled
@@ -160,11 +163,10 @@ class BERTClassifier(nn.Module):
         token_type_ids: Optional[torch.Tensor] = None,
         return_embeddings: bool = False,
     ) -> Dict[str, torch.Tensor]:
-        outputs = self.bert(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-        )
+        bert_kwargs = {"input_ids": input_ids, "attention_mask": attention_mask}
+        if self._accepts_token_type_ids and token_type_ids is not None:
+            bert_kwargs["token_type_ids"] = token_type_ids
+        outputs = self.bert(**bert_kwargs)
         hidden_states = outputs.last_hidden_state     # (B, L, H)
         pooled = self.pooler(hidden_states, attention_mask)   # (B, H)
         dropped = self.dropout(pooled)

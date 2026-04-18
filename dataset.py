@@ -307,57 +307,139 @@ class DataModule:
         self.val_df = None
         self.test_df = None
 
+    def _resolve_column(self, df: pd.DataFrame, preferred: str, role: str) -> str:
+        """Resolve a configured column name, allowing case-insensitive matches."""
+        if preferred in df.columns:
+            return preferred
+
+        lower_to_actual = {c.lower(): c for c in df.columns}
+        if preferred.lower() in lower_to_actual:
+            return lower_to_actual[preferred.lower()]
+
+        raise ValueError(
+            f"Configured {role} column '{preferred}' was not found. "
+            f"Available columns: {list(df.columns)}"
+        )
+
+    def _load_source_dataframe(self) -> pd.DataFrame:
+        """Load the configured CSV. Fall back to synthetic data only if it is absent."""
+        dataset_path = getattr(self.dcfg, "dataset_path", None)
+        if dataset_path:
+            dataset_path = os.path.abspath(dataset_path)
+            if os.path.exists(dataset_path):
+                print(f"[DataModule] Loading full dataset from {dataset_path}")
+                return pd.read_csv(dataset_path)
+            print(f"[DataModule] Dataset not found at {dataset_path}; using synthetic fallback.")
+
+        print("[DataModule] Generating synthetic Hinglish dataset...")
+        return generate_hinglish_dataset(n_samples=3000, seed=self.dcfg.random_seed)
+
+    def _normalize_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Standardize source data to text/label/original_label/is_noisy columns and
+        infer class count from the full CSV.
+        """
+        text_col = self._resolve_column(df, self.dcfg.text_column, "text")
+        label_col = self._resolve_column(df, self.dcfg.label_column, "label")
+
+        before = len(df)
+        work = df.dropna(subset=[text_col, label_col]).copy()
+        work["text"] = (
+            work[text_col]
+            .astype(str)
+            .str.replace(r"\s+", " ", regex=True)
+            .str.strip()
+        )
+        work = work[work["text"].str.len() > 0].copy()
+
+        numeric_labels = pd.to_numeric(work[label_col], errors="coerce")
+        if numeric_labels.notna().all():
+            raw_labels = numeric_labels.astype(int)
+            unique_raw = sorted(raw_labels.unique().tolist())
+            label_map = {old: new for new, old in enumerate(unique_raw)}
+            work["label"] = raw_labels.map(label_map).astype(int)
+        else:
+            raw_labels = work[label_col].astype(str)
+            unique_raw = sorted(raw_labels.unique().tolist())
+            label_map = {old: new for new, old in enumerate(unique_raw)}
+            work["label"] = raw_labels.map(label_map).astype(int)
+
+        work["original_label"] = work["label"].astype(int)
+        work["is_noisy"] = 0
+
+        num_classes = int(work["label"].nunique())
+        if num_classes < 2:
+            raise ValueError("Dataset must contain at least two classes.")
+
+        self.dcfg.num_classes = num_classes
+        self.cfg.model.num_classes = num_classes
+        if len(self.dcfg.class_names) != num_classes:
+            if label_col.lower() == "hate_label" and num_classes == 2:
+                self.dcfg.class_names = ["non_hate", "hate"]
+            else:
+                self.dcfg.class_names = [f"class_{i}" for i in range(num_classes)]
+
+        dropped = before - len(work)
+        print(
+            f"[DataModule] Prepared {len(work):,} rows "
+            f"({dropped:,} dropped as empty/missing)."
+        )
+        print(f"[DataModule] Label mapping: {label_map}")
+        print(f"[DataModule] Classes: {self.dcfg.class_names}")
+        return work.reset_index(drop=True)
+
+    def _stratified_split(self, df: pd.DataFrame, test_size: float):
+        """Use stratification when each class has enough examples."""
+        counts = df["label"].value_counts()
+        stratify = df["label"] if len(counts) > 1 and counts.min() >= 2 else None
+        return train_test_split(
+            df,
+            test_size=test_size,
+            stratify=stratify,
+            random_state=self.dcfg.random_seed,
+        )
+
     def setup(self):
-        """Full data pipeline: generate → noise → split → tokenize."""
+        """Full data pipeline: load CSV -> split -> noise on train -> tokenize."""
         print("\n[DataModule] Setting up data pipeline...")
 
-        # 1. Load or generate dataset
-        cache_path = os.path.join(self.dcfg.processed_dir, "dataset.csv")
-        if os.path.exists(cache_path):
-            print(f"[DataModule] Loading cached dataset from {cache_path}")
-            df = pd.read_csv(cache_path)
-        else:
-            print("[DataModule] Generating synthetic Hinglish dataset...")
-            df = generate_hinglish_dataset(n_samples=3000, seed=self.dcfg.random_seed)
+        # 1. Load and normalize the complete configured dataset.
+        df = self._normalize_dataframe(self._load_source_dataframe())
 
-        # 2. Inject noise (only on training portion to be realistic)
-        if self.dcfg.simulate_noise and "is_noisy" not in df.columns:
-            df = apply_noise(
-                df,
+        # 2. Split on clean labels.
+        train_val_df, test_df = self._stratified_split(df, self.dcfg.test_ratio)
+        val_size_adjusted = self.dcfg.val_ratio / (1 - self.dcfg.test_ratio)
+        train_df, val_df = self._stratified_split(train_val_df, val_size_adjusted)
+
+        # 3. Inject optional synthetic noise only into the training labels.
+        train_df = train_df.copy()
+        if self.dcfg.simulate_noise and self.dcfg.noise_rate > 0:
+            train_df = apply_noise(
+                train_df,
                 noise_type=self.dcfg.noise_type,
                 noise_rate=self.dcfg.noise_rate,
                 num_classes=self.dcfg.num_classes,
                 seed=self.dcfg.noise_seed,
             )
+        else:
+            train_df["original_label"] = train_df["label"].astype(int)
+            train_df["is_noisy"] = 0
 
-        # 3. Split
-        train_val_df, test_df = train_test_split(
-            df,
-            test_size=self.dcfg.test_ratio,
-            stratify=df["label"],
-            random_state=self.dcfg.random_seed,
-        )
-        val_size_adjusted = self.dcfg.val_ratio / (1 - self.dcfg.test_ratio)
-        train_df, val_df = train_test_split(
-            train_val_df,
-            test_size=val_size_adjusted,
-            stratify=train_val_df["label"],
-            random_state=self.dcfg.random_seed,
-        )
-
-        # For val and test: restore original (clean) labels for fair evaluation
+        # Validation and test stay clean for fair evaluation.
         val_df = val_df.copy()
         test_df = test_df.copy()
-        if "original_label" in val_df.columns:
-            val_df["label"] = val_df["original_label"]
-            test_df["label"] = test_df["original_label"]
+        val_df["label"] = val_df["original_label"].astype(int)
+        test_df["label"] = test_df["original_label"].astype(int)
+        val_df["is_noisy"] = 0
+        test_df["is_noisy"] = 0
 
         self.train_df = train_df.reset_index(drop=True)
         self.val_df = val_df.reset_index(drop=True)
         self.test_df = test_df.reset_index(drop=True)
 
-        # Save processed data
+        # Save a processed copy for inspection, but never use it to replace the source CSV.
         os.makedirs(self.dcfg.processed_dir, exist_ok=True)
+        cache_path = os.path.join(self.dcfg.processed_dir, f"{self.dcfg.dataset_name}_processed.csv")
         df.to_csv(cache_path, index=False)
 
         print(f"[DataModule] Train: {len(self.train_df)}, Val: {len(self.val_df)}, Test: {len(self.test_df)}")
@@ -408,7 +490,7 @@ class DataModule:
             shuffle=shuffle,
             num_workers=0,
             pin_memory=False,
-            drop_last=True,
+            drop_last=False,
         )
 
     def get_val_loader(self) -> DataLoader:
@@ -423,6 +505,6 @@ class DataModule:
         """Return two independent shuffled DataLoaders for Co-Teaching."""
         ds1 = self.get_train_dataset()
         ds2 = self.get_train_dataset()
-        loader1 = DataLoader(ds1, batch_size=self.tcfg.batch_size, shuffle=True, num_workers=0, drop_last=True)
-        loader2 = DataLoader(ds2, batch_size=self.tcfg.batch_size, shuffle=True, num_workers=0, drop_last=True)
+        loader1 = DataLoader(ds1, batch_size=self.tcfg.batch_size, shuffle=True, num_workers=0, drop_last=False)
+        loader2 = DataLoader(ds2, batch_size=self.tcfg.batch_size, shuffle=True, num_workers=0, drop_last=False)
         return loader1, loader2

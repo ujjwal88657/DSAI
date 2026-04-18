@@ -17,12 +17,12 @@ import torch
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import CFG, Config, DataConfig, ModelConfig, TrainingConfig, VisualizationConfig
-from data.dataset import DataModule
-from models.classifier import build_dual_models
-from training.trainer import Trainer
-from evaluation.metrics import evaluate_model, predict
-from visualization.plots import run_all_visualizations
-from training.noise_strategies import GaussianMixtureNoiseSeparator
+from dataset import DataModule
+from classifier import build_dual_models
+from trainer import Trainer
+from metrics import predict
+from plots import run_all_visualizations
+from noise_strategies import GaussianMixtureNoiseSeparator
 
 
 # ============================================================
@@ -67,9 +67,15 @@ def parse_args():
     p.add_argument("--noise_rate", type=float, default=None, help="Override noise_rate (0.0-1.0)")
     p.add_argument("--noise_type", type=str, default=None,
                    choices=["symmetric", "asymmetric", "instance"])
+    p.add_argument("--dataset_path", type=str, default=None, help="CSV dataset path")
+    p.add_argument("--text_column", type=str, default=None, help="Text column in the CSV")
+    p.add_argument("--label_column", type=str, default=None, help="Label column in the CSV")
     p.add_argument("--loss", type=str, default=None,
                    choices=["ce", "sce", "gce", "mae"], help="Loss function")
     p.add_argument("--lr", type=float, default=None, help="Learning rate")
+    p.add_argument("--model_name", type=str, default=None, help="HuggingFace model name/path")
+    p.add_argument("--max_seq_len", type=int, default=None, help="Maximum tokenizer sequence length")
+    p.add_argument("--no_noise", action="store_true", help="Disable synthetic noise injection")
     p.add_argument("--no_co_teach", action="store_true", help="Disable Co-Teaching")
     p.add_argument("--no_divide_mix", action="store_true", help="Disable DivideMix GMM")
     p.add_argument("--no_bootstrap", action="store_true", help="Disable bootstrapping")
@@ -92,10 +98,20 @@ def main():
     cfg = CFG
     if args.epochs: cfg.training.num_epochs = args.epochs
     if args.batch_size: cfg.training.batch_size = args.batch_size
+    if args.dataset_path: cfg.data.dataset_path = args.dataset_path
+    if args.text_column: cfg.data.text_column = args.text_column
+    if args.label_column: cfg.data.label_column = args.label_column
     if args.noise_rate is not None: cfg.data.noise_rate = args.noise_rate
     if args.noise_type: cfg.data.noise_type = args.noise_type
     if args.loss: cfg.training.loss_type = args.loss
     if args.lr: cfg.training.learning_rate = args.lr
+    if args.model_name:
+        cfg.model.model_name = args.model_name
+        cfg.data.tokenizer_name = args.model_name
+    if args.max_seq_len: cfg.data.max_seq_len = args.max_seq_len
+    if args.no_noise:
+        cfg.data.simulate_noise = False
+        cfg.data.noise_rate = 0.0
     if args.no_co_teach: cfg.training.use_co_teaching = False
     if args.no_divide_mix: cfg.training.use_divide_mix = False
     if args.no_bootstrap: cfg.training.use_bootstrapping = False
@@ -143,7 +159,11 @@ def main():
     print(f"  Co-Teaching: {cfg.training.use_co_teaching}")
     print(f"  DivideMix: {cfg.training.use_divide_mix}")
     print(f"  Bootstrapping: {cfg.training.use_bootstrapping}")
-    print(f"  Noise type: {cfg.data.noise_type} @ {cfg.data.noise_rate:.0%}")
+    noise_status = (
+        f"{cfg.data.noise_type} @ {cfg.data.noise_rate:.0%}"
+        if cfg.data.simulate_noise else "disabled"
+    )
+    print(f"  Synthetic noise: {noise_status}")
 
     trainer = Trainer(cfg, model1, model2, dm, device)
     history = trainer.train()
@@ -163,7 +183,7 @@ def main():
         model1, test_loader, device, return_embeddings=True
     )
 
-    from evaluation.metrics import compute_metrics, compute_loss
+    from metrics import compute_metrics, compute_loss
     test_metrics = compute_metrics(test_preds, test_labels, class_names=cfg.data.class_names)
     test_metrics["loss"] = compute_loss(test_probs, test_labels)
 
